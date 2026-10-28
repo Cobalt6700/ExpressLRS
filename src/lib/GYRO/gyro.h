@@ -7,7 +7,7 @@
 #include "modes/mode.h"
 #include "pid.h"
 
-#define GYRO_CODE_VERSION 1.22
+#define GYRO_CODE_VERSION 1.23
 
 #define GYRO_US_MIN 885 // was 988
 #define GYRO_US_MID 1500

@@ -24,6 +24,10 @@
  * (or the trick times out) control goes back to Auto-Level, which levels the
  * plane out. Pressing the button again cancels an armed or running trick.
  *
+ * A stick already held over when the button is pressed doesn't start a trick: it
+ * has to be centred and moved again. After a trick the sticks are ignored (wings
+ * held level) until they are centred, so a held stick can't bank the plane over.
+ *
  * All the tuning values are set from the LUA menu (Gyro > Gyro Settings > Trick).
  */
 
@@ -75,15 +79,16 @@ void LevelController::resetTrick()
     trick_state = TRICK_IDLE;
     trick_direction = 0.0f;
     trick_rotation = 0.0f;
+    trick_sticks_centred = false;
 }
 
-void LevelController::startTrick(trick_state_t trick, float stick)
+void LevelController::startTrick(trick_state_t trick, float stick, uint32_t now_ms)
 {
     DBGLN("Gyro: Trick start %s %s", trick == TRICK_ROLL ? "Roll" : "Loop", stick > 0 ? "+" : "-");
     trick_state = trick;
     trick_direction = stick > 0 ? 1.0f : -1.0f;
     trick_rotation = 0.0f;
-    trick_start_ms = millis();
+    trick_start_ms = now_ms;
     trick_last_us = micros();
 }
 
@@ -91,9 +96,20 @@ void LevelController::endTrick()
 {
     DBGLN("Gyro: Trick end, rotation=%f deg", radToDeg(trick_rotation));
     resetTrick();
+    // Level the wings, ignoring the sticks until they are centred again. Otherwise a
+    // stick still held from starting the trick would bank the plane hard over.
+    trick_state = TRICK_RECOVER;
     // Start the level controllers fresh so they don't kick from stale state
     pid_angle_roll.reset();
     pid_angle_pitch.reset();
+}
+
+// Stick position (0..1) treated as "centred" for the trick logic
+#define TRICK_STICK_CENTRE 0.2f
+
+static bool sticksCentred(const float input_rpy[])
+{
+    return fabsf(input_rpy[GYRO_AXIS_ROLL]) < TRICK_STICK_CENTRE && fabsf(input_rpy[GYRO_AXIS_PITCH]) < TRICK_STICK_CENTRE;
 }
 
 /**
@@ -109,7 +125,11 @@ bool LevelController::updateTrick(const float input_rpy[], const float gyro_rpy[
     if (mode != GYRO_MODE_LEVEL)
     {
         if (trick_state != TRICK_IDLE)
-            endTrick();
+        {
+            resetTrick();
+            pid_angle_roll.reset();
+            pid_angle_pitch.reset();
+        }
         return false;
     }
 
@@ -123,6 +143,23 @@ bool LevelController::updateTrick(const float input_rpy[], const float gyro_rpy[
             DBGLN("Gyro: Trick armed");
             trick_state = TRICK_ARMED;
             trick_start_ms = now_ms;
+            trick_sticks_centred = sticksCentred(input_rpy);
+        }
+        return false;
+
+    case TRICK_RECOVER:
+        // Wait for the sticks to be centred before giving them back to the pilot.
+        // A button press here arms the next trick straight away.
+        if (pressed)
+        {
+            DBGLN("Gyro: Trick armed");
+            trick_state = TRICK_ARMED;
+            trick_start_ms = now_ms;
+            trick_sticks_centred = sticksCentred(input_rpy);
+        }
+        else if (sticksCentred(input_rpy))
+        {
+            trick_state = TRICK_IDLE;
         }
         return false;
 
@@ -135,6 +172,14 @@ bool LevelController::updateTrick(const float input_rpy[], const float gyro_rpy[
             return false;
         }
 
+        // A trick needs a fresh stick movement: a stick that was already held over when
+        // the button was pressed must be centred first.
+        if (!trick_sticks_centred)
+        {
+            trick_sticks_centred = sticksCentred(input_rpy);
+            return false;
+        }
+
         // Only start a trick from (roughly) level flight
         if (isInverted(gyro.ahrs->angle_rpy) || isHighPitch(gyro.ahrs->angle_rpy))
             return false;
@@ -143,12 +188,12 @@ bool LevelController::updateTrick(const float input_rpy[], const float gyro_rpy[
         const float pitch = input_rpy[GYRO_AXIS_PITCH];
         if (fabsf(roll) >= trick_stick_threshold && fabsf(roll) >= fabsf(pitch))
         {
-            startTrick(TRICK_ROLL, roll);
+            startTrick(TRICK_ROLL, roll, now_ms);
             break;
         }
         if (fabsf(pitch) >= trick_stick_threshold)
         {
-            startTrick(TRICK_LOOP, pitch);
+            startTrick(TRICK_LOOP, pitch, now_ms);
             break;
         }
         return false;
@@ -200,6 +245,9 @@ void LevelController::calculate_pid(float input_rpy[], float gyro_rpy[], float a
     if (updateTrick(input_rpy, gyro_rpy))
         return;
 
+    // Just after a trick, hold the wings level until the pilot centres the sticks
+    const bool trick_recovering = trick_state == TRICK_RECOVER;
+
     // In Level mode, the Gyro has full control of [Pitch, Roll], not the command
     ignore_input[GYRO_AXIS_ROLL] = ignore_input[GYRO_AXIS_PITCH] = true;
 
@@ -215,8 +263,10 @@ void LevelController::calculate_pid(float input_rpy[], float gyro_rpy[], float a
 
     // Angle Demand
     // The stick tell the percentage of the max angle where we want the plane to be
-    const float setpoint_pitch = input_rpy[GYRO_AXIS_PITCH] * degToRad(fm_angle_settings.val.maxAnglePitch);
-    const float setpoint_roll = input_rpy[GYRO_AXIS_ROLL] * degToRad(fm_angle_settings.val.maxAngleRoll);
+    const float stick_pitch = trick_recovering ? 0.0f : input_rpy[GYRO_AXIS_PITCH];
+    const float stick_roll = trick_recovering ? 0.0f : input_rpy[GYRO_AXIS_ROLL];
+    const float setpoint_pitch = stick_pitch * degToRad(fm_angle_settings.val.maxAnglePitch);
+    const float setpoint_roll = stick_roll * degToRad(fm_angle_settings.val.maxAngleRoll);
 
     pid_angle_pitch.calculate(setpoint_pitch, pitch_angle);
     pid_angle_roll.calculate(setpoint_roll, roll_angle);

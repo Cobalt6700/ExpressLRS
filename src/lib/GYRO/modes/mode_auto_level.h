@@ -22,13 +22,15 @@ protected:
         TRICK_IDLE,  // Waiting for the trick button
         TRICK_ARMED, // Button pressed, waiting for an aileron/elevator stick input
         TRICK_ROLL,  // Performing an axial roll
-        TRICK_LOOP   // Performing a loop
+        TRICK_LOOP,  // Performing a loop
+        TRICK_RECOVER // Trick finished: hold wings level until the sticks are centred
     };
 
     trick_state_t trick_state = TRICK_IDLE;
     bool trick_button = false;      // Current button state
     bool trick_button_prev = false; // Button state on the previous PID cycle
     float trick_direction = 0.0f;   // +1/-1, the direction of the stick that started the trick
+    bool trick_sticks_centred = false; // Sticks have been centred since the trick was armed
     float trick_rotation = 0.0f;    // Rotation completed so far (radians, signed)
     uint32_t trick_start_ms = 0;    // When the trick was armed / started
     uint32_t trick_last_us = 0;     // Last PID cycle time, used to integrate the gyro rate
@@ -45,7 +47,7 @@ protected:
 
     void loadTrickSettings();
     void resetTrick();
-    void startTrick(trick_state_t trick, float stick);
+    void startTrick(trick_state_t trick, float stick, uint32_t now_ms);
     void endTrick();
     bool updateTrick(const float input_rpy[], const float gyro_rpy[]);
 };
