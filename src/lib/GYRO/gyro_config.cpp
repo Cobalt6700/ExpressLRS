@@ -95,6 +95,8 @@ void GyroConfig::Load()
         LOAD_64(fmode, m_config.gyroFModes[i].raw);
     }
 
+    LOAD_64("trick", m_config.trick.raw);
+
     if (version != GYRO_CONFIG_VERSION)
     {
         if (version == 8) {
@@ -197,6 +199,8 @@ GyroConfig::Commit()
         SET_IF_CHAGED_64(fmode, m_config.gyroFModes[i].raw);
     }
 
+    SET_IF_CHAGED_64("trick", m_config.trick.raw);
+
     if (changes > 0)
     {
         DBGLN("Saved %d changes.", changes);
@@ -285,6 +289,19 @@ void GyroConfig::SetDefaults(bool commit)
         SetGyroFModeRaw((gyro_mode_t)fm, tmp.raw);
     }
 
+    // One button trick
+    rx_config_gyro_trick_t trick;
+    trick.raw = 0;
+    trick.val.armTime = 3;
+    trick.val.stickThreshold = 60;
+    trick.val.rollDeflection = 100;
+    trick.val.loopDeflection = 80;
+    trick.val.rollExit = 40;  // release at 320 deg
+    trick.val.loopExit = 60;  // release at 300 deg
+    trick.val.rollTimeout = 3;
+    trick.val.loopTimeout = 6;
+    SetGyroTrickRaw(trick.raw);
+
     if (commit)
     {
         m_modified = EVENT_CONFIG_GYRO_CHANGED;
@@ -350,6 +367,15 @@ void GyroConfig::SetGyroFModeRaw(gyro_mode_t fm, uint64_t raw)
         return;
 
     config->raw = raw;
+    m_modified = EVENT_CONFIG_GYRO_CHANGED;
+}
+
+void GyroConfig::SetGyroTrickRaw(uint64_t raw)
+{
+    if (m_config.trick.raw == raw)
+        return;
+
+    m_config.trick.raw = raw;
     m_modified = EVENT_CONFIG_GYRO_CHANGED;
 }
 

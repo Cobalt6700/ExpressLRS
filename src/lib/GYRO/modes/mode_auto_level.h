@@ -33,6 +33,17 @@ protected:
     uint32_t trick_start_ms = 0;    // When the trick was armed / started
     uint32_t trick_last_us = 0;     // Last PID cycle time, used to integrate the gyro rate
 
+    // Tuning, loaded from the gyro config (LUA Trick folder)
+    uint32_t trick_arm_ms = 3000;
+    float trick_stick_threshold = 0.6f;
+    float trick_roll_deflection = 1.0f;
+    float trick_loop_deflection = 0.8f;
+    float trick_roll_end = 0.0f; // radians
+    float trick_loop_end = 0.0f; // radians
+    uint32_t trick_roll_timeout_ms = 3000;
+    uint32_t trick_loop_timeout_ms = 6000;
+
+    void loadTrickSettings();
     void resetTrick();
     void startTrick(trick_state_t trick, float stick);
     void endTrick();

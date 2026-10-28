@@ -199,6 +199,23 @@ typedef union __attribute__((packed)) {
     uint32_t raw;
 } rx_config_gyro_global_t;
 
+// One button trick settings (see modes/mode_auto_level.cpp)
+typedef union __attribute__((packed)) {
+    struct
+    {
+        uint64_t armTime : 4,     // seconds the trick stays armed waiting for a stick (1-10)
+            stickThreshold : 7,   // % stick deflection that starts the trick (20-100)
+            rollDeflection : 7,   // % aileron used for the roll (20-100)
+            loopDeflection : 7,   // % elevator used for the loop (20-100)
+            rollExit : 7,         // hand back to Auto-Level this many degrees before a full roll (0-120)
+            loopExit : 7,         // hand back to Auto-Level this many degrees before a full loop (0-120)
+            rollTimeout : 4,      // seconds, safety limit for a roll (1-15)
+            loopTimeout : 4,      // seconds, safety limit for a loop (1-15)
+            unused : 17;
+    } val;
+    uint64_t raw;
+} rx_config_gyro_trick_t;
+
 constexpr uint8_t GYRO_MAX_CHANNELS = 16;
 constexpr uint8_t GYRO_CONFIG_VERSION = 3;
 
@@ -214,6 +231,7 @@ typedef struct __attribute__((packed))
     rx_config_gyro_mode_pos_t gyroModeSwitch;                       // Gyro functions for switch positions
     rx_config_gyro_PID_t gyroPIDs[GYRO_PID_GROUP_MAX][GYRO_N_AXES]; // PID gains for each axis
     rx_config_gyro_fmode_t gyroFModes[GYRO_MODE_MAX];               // Mode Description
+    rx_config_gyro_trick_t trick;                                   // One button trick settings
 } rx_config_gyro_t;
 
 class Quaternion

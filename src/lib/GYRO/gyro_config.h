@@ -27,6 +27,7 @@ public:
     const rx_config_gyro_PID_t *GetGyroPID(gyro_pidgroup_t group, gyro_axis_t axis) const { return &m_config.gyroPIDs[group][axis]; }
     const rx_config_gyro_fmode_t *GetGyroFMode(gyro_mode_t fm) const { return (fm >= GYRO_MODE_RATE) ? &m_config.gyroFModes[fm - GYRO_MODE_RATE] : nullptr; }
 
+    const rx_config_gyro_trick_t *GetGyroTrick() const { return &m_config.trick; }
     const rx_config_gyro_mode_pos_t *GetGyroModePos() const { return &m_config.gyroModeSwitch; }
     gyro_mode_t GetGyroMode(uint8_t pos) const;
     uint8_t GetGyroModePositions() const { return m_config.gyroModeSwitch.val.positions; }
@@ -52,6 +53,7 @@ public:
     void SetGyroChannelRaw(uint8_t ch, uint32_t raw);
     void SetGyroFModeRaw(gyro_mode_t fm, uint64_t raw);
     void SetGyroModePos(uint8_t pos, gyro_mode_t mode);
+    void SetGyroTrickRaw(uint64_t raw);
     void SetGyroModePositions(uint8_t positions);
     void SetGyroPIDRate(gyro_pidgroup_t group, gyro_axis_t axis, gyro_rate_variable_t var, uint8_t value);
 

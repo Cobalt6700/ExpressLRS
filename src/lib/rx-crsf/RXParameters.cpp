@@ -247,6 +247,10 @@ static folderParameter luaGyroSettingsFolder = {
     {"Gyro Settings", CRSF_FOLDER},
 };
 
+static folderParameter luaGyroTrickFolder = {
+    {"Trick", CRSF_FOLDER},
+};
+
 static folderParameter luaGyroFModeFolder = {
     {"FMode Settings", CRSF_FOLDER},
 };
@@ -496,6 +500,104 @@ static void luaparamGyroPID_RateD(propertiesCommon *item, uint8_t arg)
     const gyro_axis_t axis = (gyro_axis_t) luaGyroPID_Select_Axis.value;
     gyroConfig->SetGyroPIDRate(group, axis, GYRO_RATE_VARIABLE_D, arg);
     gyro.reloadConfig();
+}
+
+//------------  One Button Trick Settings -------------
+static const char STR_SECONDS[] = " s";
+static const char STR_PERCENT[] = " %";
+static const char STR_DEGREES[] = " deg";
+
+static int8Parameter luaGyroTrick_ArmTime = {
+    {"Arm Time", CRSF_UINT8},
+    {{(uint8_t)3, 1, 10}},
+    STR_SECONDS};
+
+static int8Parameter luaGyroTrick_Stick = {
+    {"Stick Trigger", CRSF_UINT8},
+    {{(uint8_t)60, 20, 100}},
+    STR_PERCENT};
+
+static int8Parameter luaGyroTrick_RollDefl = {
+    {"Roll Aileron", CRSF_UINT8},
+    {{(uint8_t)100, 20, 100}},
+    STR_PERCENT};
+
+// Degrees short of a full roll where Auto-Level takes back over
+static int8Parameter luaGyroTrick_RollExit = {
+    {"Roll Early Exit", CRSF_UINT8},
+    {{(uint8_t)40, 0, 120}},
+    STR_DEGREES};
+
+static int8Parameter luaGyroTrick_RollTimeout = {
+    {"Roll Timeout", CRSF_UINT8},
+    {{(uint8_t)3, 1, 15}},
+    STR_SECONDS};
+
+static int8Parameter luaGyroTrick_LoopDefl = {
+    {"Loop Elevator", CRSF_UINT8},
+    {{(uint8_t)80, 20, 100}},
+    STR_PERCENT};
+
+// Degrees short of a full loop where Auto-Level takes back over
+static int8Parameter luaGyroTrick_LoopExit = {
+    {"Loop Early Exit", CRSF_UINT8},
+    {{(uint8_t)60, 0, 120}},
+    STR_DEGREES};
+
+static int8Parameter luaGyroTrick_LoopTimeout = {
+    {"Loop Timeout", CRSF_UINT8},
+    {{(uint8_t)6, 1, 15}},
+    STR_SECONDS};
+
+// Read-modify-write the trick settings, then reload so the gyro picks them up
+template <typename F>
+static void updateGyroTrick(F change)
+{
+    rx_config_gyro_trick_t trick;
+    trick.raw = gyroConfig->GetGyroTrick()->raw;
+    change(trick);
+    gyroConfig->SetGyroTrickRaw(trick.raw);
+    gyro.reloadConfig();
+}
+
+static void luaparamGyroTrick_ArmTime(propertiesCommon *item, uint8_t arg)
+{
+    updateGyroTrick([arg](rx_config_gyro_trick_t &t) { t.val.armTime = arg; });
+}
+
+static void luaparamGyroTrick_Stick(propertiesCommon *item, uint8_t arg)
+{
+    updateGyroTrick([arg](rx_config_gyro_trick_t &t) { t.val.stickThreshold = arg; });
+}
+
+static void luaparamGyroTrick_RollDefl(propertiesCommon *item, uint8_t arg)
+{
+    updateGyroTrick([arg](rx_config_gyro_trick_t &t) { t.val.rollDeflection = arg; });
+}
+
+static void luaparamGyroTrick_RollExit(propertiesCommon *item, uint8_t arg)
+{
+    updateGyroTrick([arg](rx_config_gyro_trick_t &t) { t.val.rollExit = arg; });
+}
+
+static void luaparamGyroTrick_RollTimeout(propertiesCommon *item, uint8_t arg)
+{
+    updateGyroTrick([arg](rx_config_gyro_trick_t &t) { t.val.rollTimeout = arg; });
+}
+
+static void luaparamGyroTrick_LoopDefl(propertiesCommon *item, uint8_t arg)
+{
+    updateGyroTrick([arg](rx_config_gyro_trick_t &t) { t.val.loopDeflection = arg; });
+}
+
+static void luaparamGyroTrick_LoopExit(propertiesCommon *item, uint8_t arg)
+{
+    updateGyroTrick([arg](rx_config_gyro_trick_t &t) { t.val.loopExit = arg; });
+}
+
+static void luaparamGyroTrick_LoopTimeout(propertiesCommon *item, uint8_t arg)
+{
+    updateGyroTrick([arg](rx_config_gyro_trick_t &t) { t.val.loopTimeout = arg; });
 }
 
 //------------  Gyro RX Orientation Info -------------
@@ -1623,6 +1725,17 @@ void RXEndpoint::registerParameters()
             registerParameter(&luaGyroCalibrationFolder, nullptr, luaGyroSettingsFolder.common.id);
             registerParameter(&luaGyroRxOrientationFolder, nullptr, luaGyroCalibrationFolder.common.id);
             registerParameter(&luaGyroPIDFolder, nullptr, luaGyroSettingsFolder.common.id);
+            registerParameter(&luaGyroTrickFolder, nullptr, luaGyroSettingsFolder.common.id);
+
+            // ----- Gyro Settings->Trick (one button trick, Auto-Level only)
+            registerParameter(&luaGyroTrick_ArmTime, &luaparamGyroTrick_ArmTime, luaGyroTrickFolder.common.id);
+            registerParameter(&luaGyroTrick_Stick, &luaparamGyroTrick_Stick, luaGyroTrickFolder.common.id);
+            registerParameter(&luaGyroTrick_RollDefl, &luaparamGyroTrick_RollDefl, luaGyroTrickFolder.common.id);
+            registerParameter(&luaGyroTrick_RollExit, &luaparamGyroTrick_RollExit, luaGyroTrickFolder.common.id);
+            registerParameter(&luaGyroTrick_RollTimeout, &luaparamGyroTrick_RollTimeout, luaGyroTrickFolder.common.id);
+            registerParameter(&luaGyroTrick_LoopDefl, &luaparamGyroTrick_LoopDefl, luaGyroTrickFolder.common.id);
+            registerParameter(&luaGyroTrick_LoopExit, &luaparamGyroTrick_LoopExit, luaGyroTrickFolder.common.id);
+            registerParameter(&luaGyroTrick_LoopTimeout, &luaparamGyroTrick_LoopTimeout, luaGyroTrickFolder.common.id);
 
             // ----- Gyro Model->Modes
             registerParameter(&luaGyroModePositions,
@@ -1909,6 +2022,16 @@ void RXEndpoint::updateParameters()
         setUint8Value(&luaGyroPID_RateP, gyroPIDs->val.p);
         setUint8Value(&luaGyroPID_RateI, gyroPIDs->val.i);
         setUint8Value(&luaGyroPID_RateD, gyroPIDs->val.d);
+
+        const rx_config_gyro_trick_t *trick = gyroConfig->GetGyroTrick();
+        setUint8Value(&luaGyroTrick_ArmTime, trick->val.armTime);
+        setUint8Value(&luaGyroTrick_Stick, trick->val.stickThreshold);
+        setUint8Value(&luaGyroTrick_RollDefl, trick->val.rollDeflection);
+        setUint8Value(&luaGyroTrick_RollExit, trick->val.rollExit);
+        setUint8Value(&luaGyroTrick_RollTimeout, trick->val.rollTimeout);
+        setUint8Value(&luaGyroTrick_LoopDefl, trick->val.loopDeflection);
+        setUint8Value(&luaGyroTrick_LoopExit, trick->val.loopExit);
+        setUint8Value(&luaGyroTrick_LoopTimeout, trick->val.loopTimeout);
 
         setTextSelectionValue(&luaGyroOrientationH, gyroConfig->GetGyroOrientationH());
         setTextSelectionValue(&luaGyroOrientationV, gyroConfig->GetGyroOrientationV());

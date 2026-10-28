@@ -16,22 +16,16 @@
  * One button trick (Auto-Level mode only)
  *
  * Press the trick button (a channel set to the "Trick" function) to arm a trick.
- * Then, within TRICK_ARM_TIMEOUT_MS, move a stick past TRICK_STICK_THRESHOLD:
+ * Then, within the arm time, move a stick past the stick threshold:
  *   - Aileron left/right -> axial roll in that direction
  *   - Elevator up/down   -> inside/outside loop
  * The gyro flies the trick with a fixed control surface deflection, counting the
  * rotation from the gyro rate. Once the plane has rotated close to 360 degrees
  * (or the trick times out) control goes back to Auto-Level, which levels the
  * plane out. Pressing the button again cancels an armed or running trick.
+ *
+ * All the tuning values are set from the LUA menu (Gyro > Gyro Settings > Trick).
  */
-#define TRICK_ARM_TIMEOUT_MS 3000     // How long the trick stays armed waiting for a stick input
-#define TRICK_STICK_THRESHOLD 0.6f    // Stick deflection (0..1) that starts the trick
-#define TRICK_ROLL_DEFLECTION 1.0f    // Aileron deflection used for the roll (0..1)
-#define TRICK_LOOP_DEFLECTION 0.8f    // Elevator deflection used for the loop (0..1)
-#define TRICK_ROLL_END_DEG 320.0f     // Hand back to Auto-Level after this much roll
-#define TRICK_LOOP_END_DEG 300.0f     // Hand back to Auto-Level after this much pitch rotation
-#define TRICK_ROLL_TIMEOUT_MS 3000    // Safety limit for a roll
-#define TRICK_LOOP_TIMEOUT_MS 6000    // Safety limit for a loop
 
 void LevelController::initialize(gyro_mode_t mode)
 {
@@ -50,7 +44,25 @@ void LevelController::initialize(gyro_mode_t mode)
 
     ignore_input[0] = ignore_input[1] = ignore_input[2] = false;
 
+    loadTrickSettings();
     resetTrick();
+}
+
+/**
+ * Read the trick tuning from the gyro config, keeping each value in a safe range.
+ */
+void LevelController::loadTrickSettings()
+{
+    const rx_config_gyro_trick_t *t = gyroConfig->GetGyroTrick();
+
+    trick_arm_ms = constrain((uint32_t)t->val.armTime, 1U, 10U) * 1000U;
+    trick_stick_threshold = constrain((float)t->val.stickThreshold, 20.0f, 100.0f) / 100.0f;
+    trick_roll_deflection = constrain((float)t->val.rollDeflection, 20.0f, 100.0f) / 100.0f;
+    trick_loop_deflection = constrain((float)t->val.loopDeflection, 20.0f, 100.0f) / 100.0f;
+    trick_roll_end = degToRad(360.0f - constrain((float)t->val.rollExit, 0.0f, 120.0f));
+    trick_loop_end = degToRad(360.0f - constrain((float)t->val.loopExit, 0.0f, 120.0f));
+    trick_roll_timeout_ms = constrain((uint32_t)t->val.rollTimeout, 1U, 15U) * 1000U;
+    trick_loop_timeout_ms = constrain((uint32_t)t->val.loopTimeout, 1U, 15U) * 1000U;
 }
 
 void LevelController::setTrickButton(bool pressed)
@@ -116,7 +128,7 @@ bool LevelController::updateTrick(const float input_rpy[], const float gyro_rpy[
 
     case TRICK_ARMED:
     {
-        if (pressed || (now_ms - trick_start_ms) > TRICK_ARM_TIMEOUT_MS)
+        if (pressed || (now_ms - trick_start_ms) > trick_arm_ms)
         {
             DBGLN("Gyro: Trick disarmed");
             resetTrick();
@@ -129,12 +141,12 @@ bool LevelController::updateTrick(const float input_rpy[], const float gyro_rpy[
 
         const float roll = input_rpy[GYRO_AXIS_ROLL];
         const float pitch = input_rpy[GYRO_AXIS_PITCH];
-        if (fabsf(roll) >= TRICK_STICK_THRESHOLD && fabsf(roll) >= fabsf(pitch))
+        if (fabsf(roll) >= trick_stick_threshold && fabsf(roll) >= fabsf(pitch))
         {
             startTrick(TRICK_ROLL, roll);
             break;
         }
-        if (fabsf(pitch) >= TRICK_STICK_THRESHOLD)
+        if (fabsf(pitch) >= trick_stick_threshold)
         {
             startTrick(TRICK_LOOP, pitch);
             break;
@@ -163,9 +175,9 @@ bool LevelController::updateTrick(const float input_rpy[], const float gyro_rpy[
     const gyro_axis_t axis = roll ? GYRO_AXIS_ROLL : GYRO_AXIS_PITCH;
     trick_rotation += gyro_rpy[axis] * dt;
 
-    const float end_deg = roll ? TRICK_ROLL_END_DEG : TRICK_LOOP_END_DEG;
-    const uint32_t timeout_ms = roll ? TRICK_ROLL_TIMEOUT_MS : TRICK_LOOP_TIMEOUT_MS;
-    if (fabsf(radToDeg(trick_rotation)) >= end_deg || (now_ms - trick_start_ms) > timeout_ms)
+    const float end_rad = roll ? trick_roll_end : trick_loop_end;
+    const uint32_t timeout_ms = roll ? trick_roll_timeout_ms : trick_loop_timeout_ms;
+    if (fabsf(trick_rotation) >= end_rad || (now_ms - trick_start_ms) > timeout_ms)
     {
         endTrick();
         return false;
@@ -174,7 +186,7 @@ bool LevelController::updateTrick(const float input_rpy[], const float gyro_rpy[
     // Fly the trick: the stick is ignored on roll and pitch, the trick axis gets a fixed
     // deflection and the other axes keep the rate (damping) corrections.
     ignore_input[GYRO_AXIS_ROLL] = ignore_input[GYRO_AXIS_PITCH] = true;
-    corr[axis] = trick_direction * (roll ? TRICK_ROLL_DEFLECTION : TRICK_LOOP_DEFLECTION);
+    corr[axis] = trick_direction * (roll ? trick_roll_deflection : trick_loop_deflection);
 
     pid_angle_roll.reset();
     pid_angle_pitch.reset();
