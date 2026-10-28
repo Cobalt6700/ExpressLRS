@@ -7,7 +7,7 @@
 #include "modes/mode.h"
 #include "pid.h"
 
-#define GYRO_CODE_VERSION 1.20
+#define GYRO_CODE_VERSION 1.21
 
 #define GYRO_US_MIN 885 // was 988
 #define GYRO_US_MID 1500
@@ -65,6 +65,7 @@ private:
     int8_t mode_ch = -1;
     int8_t mode_position = -1;
     int8_t gain_ch = -1;
+    int8_t trick_ch = -1;
     int8_t roll_ch = -1;
     int8_t pitch_ch = -1;
     int8_t yaw_ch = -1;
@@ -75,6 +76,7 @@ private:
 
     void detect_gain(uint16_t us);
     void detect_mode(uint16_t us);
+    bool detect_trick_button(uint16_t crsf);
     void switch_mode(gyro_mode_t mode);
     void learn_sticks(uint8_t ch, uint16_t us);
 

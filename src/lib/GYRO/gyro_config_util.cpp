@@ -11,6 +11,7 @@ void gyroQuickModelSetup(int wingType, int tailType)
 
     gyroConfig->SetGyroChannel(8, FN_GYRO_MODE, false, false); // Mode
     gyroConfig->SetGyroChannel(9, FN_GYRO_GAIN, false, false); // Gain
+    gyroConfig->SetGyroChannel(10, FN_GYRO_TRICK, false, false); // One button trick (Ch11)
 
     switch (wingType)
     {

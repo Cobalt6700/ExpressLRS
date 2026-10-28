@@ -12,6 +12,27 @@
  * stick input.
  */
 
+/**
+ * One button trick (Auto-Level mode only)
+ *
+ * Press the trick button (a channel set to the "Trick" function) to arm a trick.
+ * Then, within TRICK_ARM_TIMEOUT_MS, move a stick past TRICK_STICK_THRESHOLD:
+ *   - Aileron left/right -> axial roll in that direction
+ *   - Elevator up/down   -> inside/outside loop
+ * The gyro flies the trick with a fixed control surface deflection, counting the
+ * rotation from the gyro rate. Once the plane has rotated close to 360 degrees
+ * (or the trick times out) control goes back to Auto-Level, which levels the
+ * plane out. Pressing the button again cancels an armed or running trick.
+ */
+#define TRICK_ARM_TIMEOUT_MS 3000     // How long the trick stays armed waiting for a stick input
+#define TRICK_STICK_THRESHOLD 0.6f    // Stick deflection (0..1) that starts the trick
+#define TRICK_ROLL_DEFLECTION 1.0f    // Aileron deflection used for the roll (0..1)
+#define TRICK_LOOP_DEFLECTION 0.8f    // Elevator deflection used for the loop (0..1)
+#define TRICK_ROLL_END_DEG 320.0f     // Hand back to Auto-Level after this much roll
+#define TRICK_LOOP_END_DEG 300.0f     // Hand back to Auto-Level after this much pitch rotation
+#define TRICK_ROLL_TIMEOUT_MS 3000    // Safety limit for a roll
+#define TRICK_LOOP_TIMEOUT_MS 6000    // Safety limit for a loop
+
 void LevelController::initialize(gyro_mode_t mode)
 {
     RateController::initialize(mode);
@@ -28,11 +49,144 @@ void LevelController::initialize(gyro_mode_t mode)
     configure_pid_gains(&pid_angle_pitch, pitch_pid_params, (int8_t)fm_angle_settings.val.gainPitch, pitch_limit, -pitch_limit);
 
     ignore_input[0] = ignore_input[1] = ignore_input[2] = false;
+
+    resetTrick();
+}
+
+void LevelController::setTrickButton(bool pressed)
+{
+    trick_button = pressed;
+}
+
+void LevelController::resetTrick()
+{
+    trick_state = TRICK_IDLE;
+    trick_direction = 0.0f;
+    trick_rotation = 0.0f;
+}
+
+void LevelController::startTrick(trick_state_t trick, float stick)
+{
+    DBGLN("Gyro: Trick start %s %s", trick == TRICK_ROLL ? "Roll" : "Loop", stick > 0 ? "+" : "-");
+    trick_state = trick;
+    trick_direction = stick > 0 ? 1.0f : -1.0f;
+    trick_rotation = 0.0f;
+    trick_start_ms = millis();
+    trick_last_us = micros();
+}
+
+void LevelController::endTrick()
+{
+    DBGLN("Gyro: Trick end, rotation=%f deg", radToDeg(trick_rotation));
+    resetTrick();
+    // Start the level controllers fresh so they don't kick from stale state
+    pid_angle_roll.reset();
+    pid_angle_pitch.reset();
+}
+
+/**
+ * Run the one button trick state machine.
+ * Returns true while a trick is flying the plane (normal levelling is skipped).
+ */
+bool LevelController::updateTrick(const float input_rpy[], const float gyro_rpy[])
+{
+    const bool pressed = trick_button && !trick_button_prev;
+    trick_button_prev = trick_button;
+
+    // Tricks are only allowed in Auto-Level (Launch mode shares this controller)
+    if (mode != GYRO_MODE_LEVEL)
+    {
+        if (trick_state != TRICK_IDLE)
+            endTrick();
+        return false;
+    }
+
+    const uint32_t now_ms = millis();
+
+    switch (trick_state)
+    {
+    case TRICK_IDLE:
+        if (pressed)
+        {
+            DBGLN("Gyro: Trick armed");
+            trick_state = TRICK_ARMED;
+            trick_start_ms = now_ms;
+        }
+        return false;
+
+    case TRICK_ARMED:
+    {
+        if (pressed || (now_ms - trick_start_ms) > TRICK_ARM_TIMEOUT_MS)
+        {
+            DBGLN("Gyro: Trick disarmed");
+            resetTrick();
+            return false;
+        }
+
+        // Only start a trick from (roughly) level flight
+        if (isInverted(gyro.ahrs->angle_rpy) || isHighPitch(gyro.ahrs->angle_rpy))
+            return false;
+
+        const float roll = input_rpy[GYRO_AXIS_ROLL];
+        const float pitch = input_rpy[GYRO_AXIS_PITCH];
+        if (fabsf(roll) >= TRICK_STICK_THRESHOLD && fabsf(roll) >= fabsf(pitch))
+        {
+            startTrick(TRICK_ROLL, roll);
+            break;
+        }
+        if (fabsf(pitch) >= TRICK_STICK_THRESHOLD)
+        {
+            startTrick(TRICK_LOOP, pitch);
+            break;
+        }
+        return false;
+    }
+
+    case TRICK_ROLL:
+    case TRICK_LOOP:
+        break;
+    }
+
+    // A trick is running
+    if (pressed)
+    {
+        DBGLN("Gyro: Trick cancelled");
+        endTrick();
+        return false;
+    }
+
+    const uint32_t now_us = micros();
+    const float dt = (float)(now_us - trick_last_us) / 1000000.0f;
+    trick_last_us = now_us;
+
+    const bool roll = trick_state == TRICK_ROLL;
+    const gyro_axis_t axis = roll ? GYRO_AXIS_ROLL : GYRO_AXIS_PITCH;
+    trick_rotation += gyro_rpy[axis] * dt;
+
+    const float end_deg = roll ? TRICK_ROLL_END_DEG : TRICK_LOOP_END_DEG;
+    const uint32_t timeout_ms = roll ? TRICK_ROLL_TIMEOUT_MS : TRICK_LOOP_TIMEOUT_MS;
+    if (fabsf(radToDeg(trick_rotation)) >= end_deg || (now_ms - trick_start_ms) > timeout_ms)
+    {
+        endTrick();
+        return false;
+    }
+
+    // Fly the trick: the stick is ignored on roll and pitch, the trick axis gets a fixed
+    // deflection and the other axes keep the rate (damping) corrections.
+    ignore_input[GYRO_AXIS_ROLL] = ignore_input[GYRO_AXIS_PITCH] = true;
+    corr[axis] = trick_direction * (roll ? TRICK_ROLL_DEFLECTION : TRICK_LOOP_DEFLECTION);
+
+    pid_angle_roll.reset();
+    pid_angle_pitch.reset();
+    return true;
 }
 
 void LevelController::calculate_pid(float input_rpy[], float gyro_rpy[], float ang_rpy[])
 {
     RateController::calculate_pid(input_rpy, gyro_rpy, ang_rpy);
+
+    if (updateTrick(input_rpy, gyro_rpy))
+        return;
 
     // In Level mode, the Gyro has full control of [Pitch, Roll], not the command
     ignore_input[GYRO_AXIS_ROLL] = ignore_input[GYRO_AXIS_PITCH] = true;
@@ -79,6 +233,7 @@ void LevelController::printState()
     DBGLN("IsInverted = %d,  IsHighPitch=%d", isInverted(gyro.ahrs->angle_rpy), isHighPitch(gyro.ahrs->angle_rpy));
     DBGLN("IgnoreCmd:  Roll:%d Pitch:%d ", ignore_input[GYRO_AXIS_ROLL], ignore_input[GYRO_AXIS_PITCH]);
     DBGLN("Ang Corr:   Roll:%f Pitch:%f", pid_angle_roll.output, pid_angle_pitch.output);
+    DBGLN("Trick:      State:%d Rotation:%f deg", trick_state, radToDeg(trick_rotation));
 }
 #endif // DEBUG_LOG
 

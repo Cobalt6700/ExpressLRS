@@ -90,7 +90,8 @@ typedef enum
     FN_VTAIL,
     FN_VTAIL_R,
     FN_GYRO_MODE,
-    FN_GYRO_GAIN
+    FN_GYRO_GAIN,
+    FN_GYRO_TRICK  // One button trick (momentary switch)
 } gyro_output_channel_function_t;
 
 typedef enum

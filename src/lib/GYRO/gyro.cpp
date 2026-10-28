@@ -84,6 +84,15 @@ static int8_t GetGyroFunChannelNumber(gyro_output_channel_function_t mode, gyro_
     return result;
 }
 
+/**
+ * True for channel functions that drive a control surface (and so need stick
+ * calibration and gyro mixing). Switch inputs like Mode/Gain/Trick do not.
+ */
+static bool isSurfaceFunction(gyro_output_channel_function_t fn)
+{
+    return fn != FN_NONE && fn != FN_GYRO_MODE && fn != FN_GYRO_GAIN && fn != FN_GYRO_TRICK;
+}
+
 static uint16_t channel_us(uint8_t ch)
 {
     const rx_config_pwm_t *chConfig = config.GetPwmChannel(ch);
@@ -158,6 +167,7 @@ void Gyro::reloadConfig()
     mode_controller = nullptr;
     mode_ch = GetGyroFunChannelNumber(FN_GYRO_MODE);
     gain_ch = GetGyroFunChannelNumber(FN_GYRO_GAIN);
+    trick_ch = GetGyroFunChannelNumber(FN_GYRO_TRICK);
     roll_ch = GetGyroFunChannelNumber(FN_AILERON);
     pitch_ch = GetGyroFunChannelNumber(FN_ELEVATOR);
     yaw_ch = GetGyroFunChannelNumber(FN_RUDDER);
@@ -250,6 +260,19 @@ void Gyro::detect_mode(uint16_t crsf)
     const gyro_mode_t selected_mode = gyroConfig->GetGyroMode(mode_position);
     if (gyro_mode != selected_mode)
         switch_mode(selected_mode);
+}
+
+/**
+ * Read the one button trick switch. The switch is "pressed" when the channel
+ * is above center (or below center when the channel is set to Dir Reverse).
+ */
+bool Gyro::detect_trick_button(uint16_t crsf)
+{
+    if (crsf == CRSF_CHANNEL_VALUE_UNSET)
+        return false;
+
+    const bool high = crsf > CRSF_CHANNEL_VALUE_MID;
+    return gyroConfig->GetGyroChannel(trick_ch)->val.inverted ? !high : high;
 }
 
 /**
@@ -368,6 +391,8 @@ void Gyro::mixerInput()
         detect_gain(channel_us(gain_ch));
     else
         master_gain = 1.0;
+
+    mode_controller->setTrickButton(trick_ch >= 0 && detect_trick_button(channel_crsf(trick_ch)));
 
     mode_controller->calculate_pid(input_rpy, ahrs->gyro_rpy, ahrs->angle_rpy);
 
@@ -489,7 +514,7 @@ void Gyro::StickLimitCalibration(bool done)
         {
             const auto ch_info = gyroConfig->GetGyroChannel(ch);
             const auto output_mode = (gyro_output_channel_function_t)ch_info->val.output_mode;
-            if (output_mode != FN_NONE && output_mode != FN_GYRO_GAIN && output_mode != FN_GYRO_MODE)
+            if (isSurfaceFunction(output_mode))
             {
                 // Only moving surfaces
                 const auto pwm_limits = &temp_limits[ch];
@@ -516,7 +541,7 @@ bool Gyro::isStickCalibrationNeeded()
         const auto ch_info = gyroConfig->GetGyroChannel(ch);
         const auto output_mode = (gyro_output_channel_function_t)ch_info->val.output_mode;
         const auto limits = gyroConfig->GetPwmChannelLimits(ch);
-        if (output_mode != FN_NONE && output_mode != FN_GYRO_GAIN && output_mode != FN_GYRO_MODE)
+        if (isSurfaceFunction(output_mode))
         {
             // Only valid surfaces are checked
             if ((limits->val.max == GYRO_US_MAX && limits->val.min == GYRO_US_MIN) || // Default
