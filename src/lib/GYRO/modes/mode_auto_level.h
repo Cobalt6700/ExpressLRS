@@ -8,6 +8,7 @@ public:
     void initialize(gyro_mode_t mode) override;
     void calculate_pid(float input_rpy[], float gyro_rpy[], float ang_rpy[]) override;
     void setTrickButton(bool pressed) override;
+    const char *getTrickStatus() override;
 #if defined(DEBUG_LOG)
     void printState() override;
 #endif
@@ -44,6 +45,8 @@ protected:
     float trick_loop_end = 0.0f; // radians
     uint32_t trick_roll_timeout_ms = 3000;
     uint32_t trick_loop_timeout_ms = 6000;
+
+    char trick_status[16] {};
 
     void loadTrickSettings();
     void resetTrick();

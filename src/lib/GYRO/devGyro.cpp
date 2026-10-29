@@ -153,7 +153,9 @@ static void send_telemetry()
     CRSF_MK_FRAME_T(crsf_flight_mode_t)
     crsfFlightMode = {0};
 
-    strcpy(crsfFlightMode.p.flight_mode, STR_gyroMode[gyro.gyro_mode]);
+    // Show the one button trick state instead of the mode name while a trick is active
+    const char *trickStatus = gyro.getTrickStatus();
+    strncpy(crsfFlightMode.p.flight_mode, trickStatus != nullptr ? trickStatus : STR_gyroMode[gyro.gyro_mode], sizeof(crsfFlightMode.p.flight_mode) - 1);
 
     crsfRouter.SetHeaderAndCrc((crsf_header_t *)&crsfFlightMode, CRSF_FRAMETYPE_FLIGHT_MODE, CRSF_FRAME_SIZE(sizeof(crsf_flight_mode_t)));
     crsfRouter.deliverMessageTo(CRSF_ADDRESS_CRSF_TRANSMITTER, &crsfFlightMode.h);

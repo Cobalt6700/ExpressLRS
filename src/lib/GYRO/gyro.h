@@ -7,7 +7,7 @@
 #include "modes/mode.h"
 #include "pid.h"
 
-#define GYRO_CODE_VERSION 1.23
+#define GYRO_CODE_VERSION 1.24
 
 #define GYRO_US_MIN 885 // was 988
 #define GYRO_US_MID 1500
@@ -36,6 +36,7 @@ public:
     uint8_t getStatusBits();
     const char *getNextAction();
     gyro_mode_t getMode();
+    const char *getTrickStatus();
     int8_t getModePosition() const { return mode_position; }
     void mixerInput();
     void mixerOutput(uint8_t ch, uint16_t *us);

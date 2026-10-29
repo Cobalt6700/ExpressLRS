@@ -33,6 +33,7 @@ private:
     /* Derivative low-pass filter time constant */
     float tau;
     float prevMeasurement;
+    bool hasPrevMeasurement; // false after reset(), so the first sample doesn't cause a derivative kick
 
     unsigned long last_update;
 };

@@ -19,6 +19,7 @@ PID::PID(const float max, const float min, const float Kp, const float Ki, const
       setpoint(0),
       tau(0),
       prevMeasurement(0),
+      hasPrevMeasurement(false),
       last_update(micros())
 {
 }
@@ -44,6 +45,7 @@ void PID::reset()
     Iout = 0;
     last_update = micros();
     prevMeasurement = 0;
+    hasPrevMeasurement = false;
 }
 
 float PID::calculate(const float _setpoint, const float _pv)
@@ -77,6 +79,14 @@ float PID::calculate(const float _setpoint, const float _pv)
     Iout = _Ki * _integral;
 
     // Derivative term
+    // After a reset there is no previous measurement: start from the current one.
+    // Otherwise the whole measurement (e.g. the current bank angle) looks like a sudden
+    // change and gives a huge derivative kick that takes many seconds to decay.
+    if (!hasPrevMeasurement)
+    {
+        prevMeasurement = pv;
+        hasPrevMeasurement = true;
+    }
     Dout = -(2.0f * _Kd * (pv - prevMeasurement) /* Note: derivative on measurement, therefore minus sign in front of equation! */
              + (2.0f * tau - (float)t_delta) * Dout) /
            (2.0f * tau + (float)t_delta);

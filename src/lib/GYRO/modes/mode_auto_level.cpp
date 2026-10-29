@@ -74,6 +74,30 @@ void LevelController::setTrickButton(bool pressed)
     trick_button = pressed;
 }
 
+/**
+ * Trick status shown in the flight mode telemetry, to help check the trick on the bench.
+ * Roll/Loop show the rotation counted so far, in degrees.
+ */
+const char *LevelController::getTrickStatus()
+{
+    if (mode != GYRO_MODE_LEVEL)
+        return nullptr;
+
+    switch (trick_state)
+    {
+    case TRICK_ARMED:
+        return trick_sticks_centred ? "Trick Armed" : "Trick Ctr Stk";
+    case TRICK_ROLL:
+    case TRICK_LOOP:
+        snprintf(trick_status, sizeof(trick_status), "%s %d", trick_state == TRICK_ROLL ? "Roll" : "Loop", (int)radToDeg(trick_rotation));
+        return trick_status;
+    case TRICK_RECOVER:
+        return "Trick Ctr Stk";
+    default:
+        return nullptr;
+    }
+}
+
 void LevelController::resetTrick()
 {
     trick_state = TRICK_IDLE;

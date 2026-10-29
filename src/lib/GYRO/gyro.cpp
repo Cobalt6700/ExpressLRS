@@ -207,6 +207,11 @@ gyro_mode_t Gyro::getMode()
     return gyro_mode;
 }
 
+const char *Gyro::getTrickStatus()
+{
+    return mode_controller != nullptr ? mode_controller->getTrickStatus() : nullptr;
+}
+
 uint8_t Gyro::getStatusBits()
 {
     uint8_t bits = 0;

@@ -14,6 +14,8 @@ public:
     virtual uint16_t applyCorrection(uint8_t ch, gyro_output_channel_function_t channel_function, float command, bool inverted);
     // State of the one button trick switch. Only modes that support tricks use it.
     virtual void setTrickButton(bool pressed) {}
+    // Short trick status for telemetry (max 15 chars), or nullptr when no trick is active.
+    virtual const char *getTrickStatus() { return nullptr; }
 
 protected:
     gyro_mode_t mode = GYRO_MODE_OFF;
